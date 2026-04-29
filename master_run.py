@@ -1,299 +1,412 @@
 """
 master_run.py
 ──────────────
-The single entry point for the entire Neonveil pipeline.
+Neonveil — fully local ambience video generator (music + Blender + final MP4).
 
-Usage:
-    python master_run.py                          # Uses config defaults
-    python master_run.py --theme void_station     # Override theme
-    python master_run.py --seed 1337              # Override seed
-    python master_run.py --skip-render            # Regenerate audio only
-    python master_run.py --skip-music             # Re-render with same audio
+USAGE:
+  python master_run.py --mode {full,assets,render,assemble} [options]
 
-Pipeline stages:
-    1. Load config
-    2. Music generation  ─┐  (parallel)
-    3. Blender render    ─┘
-    4. Review gate       ← YOU decide here before anything is finalized
-    5. Compose to .mp4
-    6. Output vault
+MODES:
+  full        Generate editable assets (music + .blend) → render → assemble final MP4
+  assets      Generate editable assets only (music + .blend). Rendering is optional.
+  render      Render only from an existing .blend (no music generation)
+  assemble    Assemble final MP4 for an existing run using existing/edited assets
 
-Design principles:
-    - Audio and render run in parallel threads — neither waits for the other
-    - If either fails, the other is allowed to finish before we report errors
-    - Review gate is a hard stop — nothing composes until you approve
-    - All paths are derived from config — nothing is hardcoded here
-    - Outputs are versioned by theme + seed so runs never collide
+EXAMPLES:
+  # Generate everything (2-hour ambient video):
+  python master_run.py --mode full --theme neon_rain --duration 7200
+
+  # Generate editable assets only (no final MP4):
+  python master_run.py --mode assets --theme neon_rain --duration 7200 --seed 1234
+
+  # Later, assemble final MP4 from (possibly edited) assets:
+  python master_run.py --mode assemble --run-id 2026-04-29_neon-rain_run-0001
+
+  # Assemble with camera cuts every 3 minutes:
+  python master_run.py --mode assemble --run-id <id> \\
+    --render-cache rerender --camera-mode cuts --cut-every 180 --cut-style hard
+
+  # List cameras available in a theme:
+  python master_run.py --theme neon_rain --list-cameras
+
+  # Dry-run to preview planned actions:
+  python master_run.py --mode full --theme neon_rain --duration 7200 --dry-run
 """
 
 import os
 import sys
-import time
+import logging
 import argparse
-import threading
+import random
 from pathlib import Path
 
 # ── Project root on sys.path ──────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(BASE_DIR))
 
-from config.config_loader import load_config, get_temp_dir, get_output_dir, get_theme_dir
 
-
-# ─── CLI args ─────────────────────────────────────────────────────────────────
+# ─── CLI ─────────────────────────────────────────────────────────────────────
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Neonveil Pipeline")
-    parser.add_argument("--theme",        type=str, default=None, help="Override theme from config")
-    parser.add_argument("--seed",         type=int, default=None, help="Override seed from config")
-    parser.add_argument("--skip-music",   action="store_true",    help="Skip music generation (reuse existing audio)")
-    parser.add_argument("--skip-render",  action="store_true",    help="Skip Blender render (reuse existing frames)")
-    parser.add_argument("--no-review",    action="store_true",    help="Skip review gate (auto-approve) — use for batch testing only")
+    parser = argparse.ArgumentParser(
+        prog="master_run.py",
+        description=(
+            "Neonveil — fully local ambience video generator (music + Blender + final MP4).\n\n"
+            "MODES:\n"
+            "  full      Generate assets (music + .blend) → render → assemble final MP4\n"
+            "  assets    Generate editable assets only (music + .blend); rendering optional\n"
+            "  render    Render only from an existing .blend in a run folder\n"
+            "  assemble  Build final MP4 from existing/edited assets in a run folder\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "EXAMPLES:\n"
+            "  python master_run.py --mode full --theme neon_rain --duration 7200\n"
+            "  python master_run.py --mode assets --theme neon_rain --duration 3600 --seed 42\n"
+            "  python master_run.py --mode assemble --run-id 2026-04-29_neon-rain_run-0001\n"
+            "  python master_run.py --mode assemble --run-id <id> \\\n"
+            "    --camera-mode cuts --cut-every 180 --cut-style crossfade --cut-fade 1.0\n"
+            "  python master_run.py --theme neon_rain --list-cameras\n"
+        ),
+    )
+
+    # ── Mode ─────────────────────────────────────────────────────────────────
+    parser.add_argument(
+        "--mode",
+        choices=["full", "assets", "render", "assemble"],
+        default="full",
+        metavar="MODE",
+        help=(
+            "Pipeline mode: full | assets | render | assemble  (default: full)\n"
+            "  full     = assets + render + assemble (complete pipeline)\n"
+            "  assets   = generate music + .blend only (edit before assembling)\n"
+            "  render   = render an existing .blend in a run folder\n"
+            "  assemble = produce final MP4 from existing/edited run assets"
+        ),
+    )
+
+    # ── Run identity ─────────────────────────────────────────────────────────
+    identity = parser.add_argument_group("Run identity")
+    identity.add_argument(
+        "--theme",
+        type=str,
+        default=None,
+        metavar="THEME_NAME",
+        help="Theme folder under themes/  (required for full and assets)",
+    )
+    identity.add_argument(
+        "--run-id",
+        type=str,
+        default=None,
+        metavar="RUN_ID",
+        help=(
+            "Existing run ID under runs/  (required for assemble and render).\n"
+            "Format: YYYY-MM-DD_<theme>_run-NNNN\n"
+            "Example: 2026-04-29_neon-rain_run-0001"
+        ),
+    )
+    identity.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="INT",
+        help="Master seed for reproducibility (default: random, stored in manifest)",
+    )
+    identity.add_argument(
+        "--duration",
+        type=int,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Total duration in seconds  (required for full and assets).\n"
+            "Examples: 3600 = 1 hour, 7200 = 2 hours"
+        ),
+    )
+
+    # ── Output format ─────────────────────────────────────────────────────────
+    output_fmt = parser.add_argument_group("Output format")
+    output_fmt.add_argument(
+        "--render-mode",
+        choices=["loop", "frames", "both", "off"],
+        default=None,
+        metavar="MODE",
+        help=(
+            "Render output mode  (default depends on --mode):\n"
+            "  loop   = render video file  [default for full / assemble]\n"
+            "  frames = render PNG image sequence\n"
+            "  both   = render frames + encode video\n"
+            "  off    = skip Blender render entirely  [default for assets]"
+        ),
+    )
+    output_fmt.add_argument(
+        "--res",
+        choices=["1920x1080", "2560x1440", "3840x2160"],
+        default="2560x1440",
+        metavar="WxH",
+        help="Output resolution  (default: 2560x1440)",
+    )
+    output_fmt.add_argument(
+        "--fps",
+        type=int,
+        choices=[30, 60],
+        default=30,
+        metavar="FPS",
+        help="Frames per second  (default: 30)",
+    )
+    output_fmt.add_argument(
+        "--quality",
+        choices=["fast", "balanced", "final"],
+        default="balanced",
+        metavar="PRESET",
+        help=(
+            "Quality/speed trade-off preset  (default: balanced)\n"
+            "  fast     = 16 samples, CRF 28, ultrafast encode\n"
+            "  balanced = 64 samples, CRF 18, slow encode\n"
+            "  final    = 256 samples, CRF 12, veryslow encode"
+        ),
+    )
+
+    # ── Camera controls ───────────────────────────────────────────────────────
+    cam = parser.add_argument_group("Camera controls")
+    cam.add_argument(
+        "--camera-mode",
+        choices=["continuous", "cuts"],
+        default="continuous",
+        metavar="MODE",
+        help=(
+            "Camera switching mode  (default: continuous)\n"
+            "  continuous = one camera for the entire video\n"
+            "  cuts       = switch cameras at --cut-every intervals"
+        ),
+    )
+    cam.add_argument(
+        "--camera",
+        type=str,
+        default="auto",
+        metavar="CAMERA_NAME",
+        help=(
+            "Camera to use for continuous mode  (default: auto = theme default).\n"
+            "Example: --camera CAM_MAIN"
+        ),
+    )
+    cam.add_argument(
+        "--camera-sequence",
+        type=str,
+        default=None,
+        metavar="CAM1,CAM2,...",
+        help=(
+            "Comma-separated camera sequence for cuts mode.\n"
+            "Cycles in order (never random).  Default: auto (from cameras.yaml).\n"
+            "Example: --camera-sequence CAM_MAIN,CAM_ALT_01,CAM_ALT_02"
+        ),
+    )
+    cam.add_argument(
+        "--cut-every",
+        type=int,
+        default=240,
+        metavar="SECONDS",
+        help="Seconds per camera segment for cuts mode  (default: 240 = 4 min)",
+    )
+    cam.add_argument(
+        "--cut-style",
+        choices=["hard", "crossfade"],
+        default="hard",
+        metavar="STYLE",
+        help="Transition style between camera cuts  (default: hard)",
+    )
+    cam.add_argument(
+        "--cut-fade",
+        type=float,
+        default=1.0,
+        metavar="SECONDS",
+        help="Crossfade duration in seconds (only for --cut-style crossfade, default: 1.0)",
+    )
+    cam.add_argument(
+        "--list-cameras",
+        action="store_true",
+        help="List cameras available for the theme and exit (uses cameras.yaml or Blender)",
+    )
+
+    # ── Editable overrides ────────────────────────────────────────────────────
+    overrides = parser.add_argument_group("Editable file overrides")
+    overrides.add_argument(
+        "--blend-file",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Explicit .blend file to use for rendering.\n"
+            "Default selection order:\n"
+            "  1) runs/<run-id>/render/edited/scene_edited.blend  (your edit)\n"
+            "  2) runs/<run-id>/render/scene_used.blend           (auto-generated)\n"
+            "  3) themes/<theme>/scene.blend                      (full/assets only)"
+        ),
+    )
+    overrides.add_argument(
+        "--audio-file",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Explicit audio file (.wav) to use when assembling the final MP4.\n"
+            "Default selection order:\n"
+            "  1) runs/<run-id>/music/edited/final_from_fl.wav  (your FL Studio export)\n"
+            "  2) runs/<run-id>/music/full_mix.wav              (auto-generated)"
+        ),
+    )
+    overrides.add_argument(
+        "--render-cache",
+        choices=["reuse", "rerender"],
+        default="reuse",
+        metavar="POLICY",
+        help=(
+            "Render cache policy  (default: reuse)\n"
+            "  reuse    = reuse existing rendered frames/video if present (faster)\n"
+            "  rerender = always re-render from the selected .blend (safer after edits)"
+        ),
+    )
+
+    # ── Utility flags ─────────────────────────────────────────────────────────
+    util = parser.add_argument_group("Utility / diagnostics")
+    util.add_argument(
+        "--open-run-folder",
+        action="store_true",
+        help="Open the run folder in your file manager after completion",
+    )
+    util.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print planned actions and paths — do NOT invoke Blender or ffmpeg",
+    )
+    util.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Emit extra log output",
+    )
+
     return parser.parse_args()
 
 
-# ─── Stage 1: Music ───────────────────────────────────────────────────────────
+# ─── Validation ───────────────────────────────────────────────────────────────
 
-def run_music(config: dict, audio_path: str, result_bag: dict):
-    """Runs in a thread. Stores result or exception in result_bag."""
-    try:
-        from music_engine.generator import generate_audio
-        generate_audio(output_path=audio_path, config=config)
-        result_bag["music"] = "ok"
-    except Exception as e:
-        result_bag["music"] = e
-
-
-# ─── Stage 2: Render ──────────────────────────────────────────────────────────
-
-def run_render(config: dict, frames_dir: str, blend_save_path: str, result_bag: dict):
-    """Runs in a thread. Launches Blender as a subprocess."""
-    import subprocess
-
-    blender_exe = config["paths"]["blender_exe"]
-    render_script = str(BASE_DIR / "render_engine" / "full_render.py")
-
-    # Resolve the theme's .blend template
-    theme_dir = get_theme_dir(config)
-    blend_template = theme_dir / "scene.blend"
-
-    if not blend_template.exists():
-        result_bag["render"] = FileNotFoundError(
-            f"[Render] Template not found: {blend_template}\n"
-            f"Create a base scene.blend in themes/{config['theme']}/ first.\n"
-            f"See: themes/neon_rain/scene.blend (starter template)"
-        )
-        return
-
-    if not Path(blender_exe).exists():
-        result_bag["render"] = FileNotFoundError(
-            f"[Render] Blender not found at: {blender_exe}\n"
-            f"Update paths.blender_exe in config/config.yaml"
-        )
-        return
-
-    cmd = [
-        blender_exe,
-        "-b", str(blend_template),         # Load template (not factory reset)
-        "-P", render_script,
-        "--",                              # Everything after -- goes to our script
-        "--output",      str(frames_dir),
-        "--blend-save",  str(blend_save_path),
-        "--fps",         str(config["video"]["fps"]),
-        "--duration",    str(config["video"]["duration_minutes"]),
-        "--res-x",       str(config["video"]["resolution_x"]),
-        "--res-y",       str(config["video"]["resolution_y"]),
-        "--samples",     str(config["render"]["samples"]),
-        "--seed",        str(config["seed"]),
-        "--engine",      config["render"]["engine"],
-        "--bloom",       str(config["render"]["bloom"]).lower(),
-        "--volumetrics", str(config["render"]["volumetrics"]).lower(),
-    ]
-
-    print(f"[Render] Launching Blender...")
-    print(f"[Render] Template: {blend_template}")
-
-    result = subprocess.run(cmd, text=True)
-
-    if result.returncode != 0:
-        result_bag["render"] = RuntimeError(
-            f"[Render] Blender exited with code {result.returncode}.\n"
-            f"Check Blender's console output above for details."
-        )
-    else:
-        result_bag["render"] = "ok"
-
-
-# ─── Stage 3: Review gate ─────────────────────────────────────────────────────
-
-def review_gate(audio_path: str, frames_dir: str, config: dict) -> bool:
+def validate_args(args):
     """
-    Hard stop — shows you what was generated and waits for approval.
-    Returns True to proceed, False to abort.
+    Validate argument combinations and apply mode-specific defaults.
+    Prints a friendly error and exits on invalid input.
     """
-    from pathlib import Path
+    if args.mode in ("full", "assets"):
+        if not args.theme:
+            _die("--theme is required for --mode full and --mode assets.\n"
+                 "Example: --theme neon_rain")
+        if not args.duration and not args.list_cameras:
+            _die("--duration is required for --mode full and --mode assets.\n"
+                 "Example: --duration 7200  (2 hours)")
 
-    frames = list(Path(frames_dir).glob("*.png"))
-    audio_mb = os.path.getsize(audio_path) / (1024 * 1024) if os.path.exists(audio_path) else 0
+    if args.mode in ("assemble", "render"):
+        if not args.run_id:
+            _die(f"--run-id is required for --mode {args.mode}.\n"
+                 "Example: --run-id 2026-04-29_neon-rain_run-0001")
 
-    print("\n" + "═" * 60)
-    print("  REVIEW GATE")
-    print("═" * 60)
-    print(f"  Theme    : {config['theme']}")
-    print(f"  Seed     : {config['seed']}")
-    print(f"  Audio    : {audio_mb:.1f} MB — {audio_path}")
-    print(f"  Frames   : {len(frames)} PNG files — {frames_dir}")
-    print()
-    print("  Actions:")
-    print("  [y] Approve — proceed to compose")
-    print("  [n] Abort   — stop here, keep files for manual inspection")
-    print("  [r] Reject  — delete outputs and re-run from scratch")
-    print("═" * 60)
+    if args.camera_mode == "cuts" and args.cut_fade < 0:
+        _die("--cut-fade must be >= 0")
 
-    while True:
-        choice = input("  Your choice (y/n/r): ").strip().lower()
-        if choice == "y":
-            return "approve"
-        elif choice == "n":
-            return "abort"
-        elif choice == "r":
-            return "reject"
-        else:
-            print("  Please enter y, n, or r.")
+    if args.cut_every <= 0:
+        _die("--cut-every must be a positive integer (seconds per segment)")
+
+
+def _die(msg: str):
+    print(f"\n[Error] {msg}\n", file=sys.stderr)
+    print("Run with --help for usage information.", file=sys.stderr)
+    sys.exit(1)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    start_time = time.time()
     args = parse_args()
 
-    # Load config
-    cfg = load_config()
-
-    # Apply CLI overrides
-    if args.theme:
-        cfg["theme"] = args.theme
-        print(f"[System] Theme override: {args.theme}")
-    if args.seed is not None:
-        cfg["seed"] = args.seed
-        print(f"[System] Seed override: {args.seed}")
-
-    print(f"\n[System] ═══ Neonveil Pipeline Starting ═══")
-    print(f"[System] Project : {cfg['project_name']}")
-    print(f"[System] Theme   : {cfg['theme']}")
-    print(f"[System] Seed    : {cfg['seed']}")
-    print(f"[System] Duration: {cfg['video']['duration_minutes']} min")
-    print()
-
-    # Resolve all paths — scoped to theme + seed so runs never collide
-    temp_dir    = get_temp_dir(cfg)
-    output_dir  = get_output_dir(cfg)
-    frames_dir  = temp_dir / "frames"
-    audio_path  = str(temp_dir / "audio.wav")
-    blend_save  = str(output_dir / f"{cfg['theme']}_{cfg['seed']}.blend")
-    final_video = str(output_dir / f"{cfg['theme']}_{cfg['seed']}.mp4")
-
-    # Create directories
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    frames_dir.mkdir(parents=True, exist_ok=True)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # ── Stage 2+3: Parallel music + render ───────────────────────────────────
-    result_bag = {}
-    threads = []
-
-    if not args.skip_music:
-        t_music = threading.Thread(
-            target=run_music,
-            args=(cfg, audio_path, result_bag),
-            name="MusicThread",
-        )
-        threads.append(t_music)
-        t_music.start()
-        print("[System] Music generation started (background thread)")
-    else:
-        print("[System] --skip-music: reusing existing audio")
-        result_bag["music"] = "ok"
-
-    if not args.skip_render:
-        t_render = threading.Thread(
-            target=run_render,
-            args=(cfg, str(frames_dir), blend_save, result_bag),
-            name="RenderThread",
-        )
-        threads.append(t_render)
-        t_render.start()
-        print("[System] Blender render started (background thread)")
-    else:
-        print("[System] --skip-render: reusing existing frames")
-        result_bag["render"] = "ok"
-
-    # Wait for both to finish
-    for t in threads:
-        t.join()
-
-    # Check for failures
-    errors = []
-    if isinstance(result_bag.get("music"), Exception):
-        errors.append(("Music", result_bag["music"]))
-    if isinstance(result_bag.get("render"), Exception):
-        errors.append(("Render", result_bag["render"]))
-
-    if errors:
-        print("\n[System] ═══ PIPELINE FAILED ═══")
-        for stage, err in errors:
-            print(f"\n[{stage}] ERROR:\n  {err}")
-        print("\n[System] Fix the errors above and re-run.")
-        print("[System] Use --skip-music or --skip-render to skip the stage that succeeded.")
-        sys.exit(1)
-
-    elapsed = (time.time() - start_time) / 60
-    print(f"\n[System] Generation complete in {elapsed:.1f} min")
-
-    # ── Stage 4: Review gate ──────────────────────────────────────────────────
-    if args.no_review:
-        print("[System] --no-review: skipping review gate (auto-approve)")
-        decision = "approve"
-    else:
-        decision = review_gate(audio_path, str(frames_dir), cfg)
-
-    if decision == "abort":
-        print("\n[System] Aborted at review gate. Files kept in temp/")
-        print(f"  Audio  : {audio_path}")
-        print(f"  Frames : {frames_dir}")
-        print("[System] Re-run with --skip-music --skip-render to just re-compose.")
-        sys.exit(0)
-
-    if decision == "reject":
-        print("\n[System] Rejected. Cleaning temp and re-running...")
-        import shutil
-        shutil.rmtree(str(temp_dir), ignore_errors=True)
-        # Re-run with a new random seed
-        cfg["seed"] = None
-        from config.config_loader import load_config as _lc
-        # Just restart cleanly
-        os.execv(sys.executable, [sys.executable] + sys.argv)
-
-    # ── Stage 5: Compose ─────────────────────────────────────────────────────
-    print(f"\n[System] Composing final video...")
-    from composer.compose import compose
-    compose(
-        audio_path=audio_path,
-        frames_dir=str(frames_dir),
-        output_path=final_video,
-        config=cfg,
+    # Configure logging
+    level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(
+        format="%(message)s",
+        level=level,
     )
 
-    # ── Stage 6: Output summary ───────────────────────────────────────────────
-    total_elapsed = (time.time() - start_time) / 60
-    video_mb = os.path.getsize(final_video) / (1024 * 1024)
+    # ── Handle --list-cameras before validation (needs --theme, not --mode) ──
+    if args.list_cameras:
+        _cmd_list_cameras(args)
+        return
 
-    print(f"\n[System] ═══ DONE ═══")
-    print(f"[System] Total time : {total_elapsed:.1f} min")
-    print(f"[System] Video      : {final_video} ({video_mb:.0f} MB)")
-    print(f"[System] .blend     : {blend_save}")
-    print(f"[System] Audio WAV  : {audio_path}")
+    validate_args(args)
+
+    # Load config
+    from config.config_loader import load_config, reset_cache
+    reset_cache()                            # allow fresh load each run
+    cfg = load_config()
+
+    # Apply CLI overrides to config
+    if args.theme:
+        cfg["theme"] = args.theme
+    if args.seed is not None:
+        cfg["seed"] = args.seed
+    elif cfg.get("seed") is None:
+        cfg["seed"] = random.randint(0, 999999)
+        print(f"[System] Auto seed: {cfg['seed']}")
+
+    # Propagate fps + resolution into config so downstream modules see them
+    cfg["video"]["fps"] = args.fps
+    w, h = args.res.split("x")
+    cfg["video"]["resolution_x"] = int(w)
+    cfg["video"]["resolution_y"] = int(h)
+
+    # ── Dispatch to orchestrator ───────────────────────────────────────────────
+    from neonveil.orchestrator import Orchestrator
+    orch = Orchestrator(args, cfg)
+
+    try:
+        orch.run()
+    except KeyboardInterrupt:
+        print("\n[System] Interrupted by user.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n[System] ═══ PIPELINE FAILED ═══")
+        print(f"[System] Error: {e}")
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        print("\n[System] Use --verbose for a full traceback.")
+        sys.exit(1)
+
+
+# ─── --list-cameras handler ───────────────────────────────────────────────────
+
+def _cmd_list_cameras(args):
+    """Handle --list-cameras: print cameras and exit."""
+    if not args.theme:
+        _die("--theme is required with --list-cameras.\nExample: --theme neon_rain")
+
+    from config.config_loader import load_config, reset_cache, get_theme_dir
+    reset_cache()
+    cfg = load_config()
+    if args.theme:
+        cfg["theme"] = args.theme
+
+    theme_dir  = get_theme_dir(cfg)
+    theme_blend = theme_dir / "scene.blend"
+
+    # Try the blend override too
+    blend_file = args.blend_file or (str(theme_blend) if theme_blend.exists() else None)
+
+    from neonveil.steps.render import list_cameras
+    cameras = list_cameras(theme_dir, blend_file, cfg)
+
+    print(f"\n[Cameras] Theme: {args.theme}")
+    if cameras:
+        print(f"[Cameras] Found {len(cameras)} camera(s):")
+        for cam in cameras:
+            print(f"  {cam}")
+    else:
+        print("[Cameras] No cameras found (place cameras in cameras.yaml or in the .blend).")
     print()
 
 

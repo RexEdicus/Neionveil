@@ -1,0 +1,30 @@
+# themes/neon_rain/cameras.yaml
+# ─────────────────────────────
+# Camera definitions for the Neon Rain theme.
+#
+# These cameras should exist as objects in themes/neon_rain/scene.blend.
+# When --camera-mode cuts is used, the pipeline cycles through this list in order
+# (sequence mode, as per v1 CLI contract).
+#
+# Usage:
+#   --camera-mode continuous --camera CAM_MAIN
+#   --camera-mode cuts --cut-every 240          (uses default_sequence below)
+#   --camera-mode cuts --camera-sequence CAM_MAIN,CAM_ALT_01  (explicit override)
+
+# List of camera names (must match object names in the .blend file)
+cameras:
+  - name: CAM_MAIN
+    description: "Primary wide establishing shot — full street level view"
+  - name: CAM_ALT_01
+    description: "Low angle — puddle reflections of neon signs"
+  - name: CAM_ALT_02
+    description: "High angle — aerial overview of rain-soaked alley"
+
+# Default camera for --camera-mode continuous (if --camera auto is passed)
+default_camera: CAM_MAIN
+
+# Default sequence for --camera-mode cuts (if --camera-sequence is not specified)
+default_sequence:
+  - CAM_MAIN
+  - CAM_ALT_01
+  - CAM_ALT_02

@@ -1,0 +1,63 @@
+# .gitignore — Neonveil project
+# ──────────────────────────────
+
+# ── Runtime outputs (large, local-only) ──────────────────────────────────────
+# Ignore runs/ directory contents but keep the directory itself tracked
+runs/*
+!runs/.gitkeep
+temp/
+output_vault/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Blender temp files ────────────────────────────────────────────────────────
+*.blend1
+*.blend2
+
+# ── Audio artifacts ───────────────────────────────────────────────────────────
+*.wav
+*.mp3
+*.ogg
+*.flac
+# Keep MIDI in themes/ but not in runs/
+runs/**/*.mid
+
+# ── Video artifacts ───────────────────────────────────────────────────────────
+*.mp4
+*.mkv
+*.mov
+*.avi
+
+# ── Image sequences ───────────────────────────────────────────────────────────
+runs/**/frames*/
+runs/**/frames_seg*/
+
+# ── Python virtualenvs / packaging ───────────────────────────────────────────
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── IDE / OS artifacts ────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Test artifacts ────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+runs/**/logs/
+*.log
