@@ -1,0 +1,46 @@
+project_name: neonveil
+
+# ─── Video ────────────────────────────────────────────────────────────────────
+video:
+  duration_minutes: 120          # Target video length (2 hours)
+  resolution_x: 2560
+  resolution_y: 1440
+  fps: 30
+
+# ─── Audio ────────────────────────────────────────────────────────────────────
+audio:
+  sample_rate: 44100             # 44.1kHz — standard for music, NOT 32000
+  channels: 2                    # Stereo — mandatory for ambient music
+  encode_bitrate: "320k"         # AAC bitrate for the upload copy
+  # MusicGen model: 'small' (300M), 'medium' (1.5B), 'large' (3.3B)
+  # On 8GB VRAM: medium is safe. large may OOM on very long generations.
+  musicgen_model: "facebook/musicgen-medium"
+  # Prompt is set per-theme in themes/<name>/prompts.yaml
+  # This is the fallback if no theme prompt is found
+  fallback_prompt: "dark cinematic ambient drone, rain, distant city, slow melancholic pads, Blade Runner aesthetic"
+
+# ─── Render ───────────────────────────────────────────────────────────────────
+render:
+  engine: "BLENDER_EEVEE_NEXT"   # Correct string for Blender 4.x / 5.x
+  samples: 64                    # EEVEE samples — 64 is quality/speed sweet spot
+  use_gpu: true
+  # Bloom and volumetrics are key to the cyberpunk look
+  bloom: true
+  volumetrics: true
+  motion_blur: false             # Off for ambient — saves render time
+
+# ─── Paths ────────────────────────────────────────────────────────────────────
+paths:
+  blender_exe: "C:\\Program Files\\Blender Foundation\\Blender 5.0\\blender.exe"
+  themes_dir: "themes"
+  temp_dir: "temp"
+  output_dir: "output_vault"
+
+# ─── Active theme ─────────────────────────────────────────────────────────────
+# Change this to switch themes — nothing else needs to be touched
+theme: "neon_rain"
+
+# ─── Reproducibility ──────────────────────────────────────────────────────────
+seed: 42
+# Set to null to use a random seed each run:
+# seed: null

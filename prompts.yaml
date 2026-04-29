@@ -1,0 +1,16 @@
+# themes/neon_rain/prompts.yaml
+# ─────────────────────────────
+# Music prompt for the Neon Rain theme.
+# Edit freely — this is what gets passed to MusicGen.
+
+music_prompt: >
+  dark cinematic ambient drone, rain-soaked neon city at 3am,
+  slow pulsing bass, distant thunder, melancholic synthesizer pads,
+  Blade Runner 2049 aesthetic, wet reflections, mournful atmosphere,
+  120 BPM, no drums, ethereal texture, deep reverb
+
+# SFX layers for Stable Audio Open (stem_layer.py — coming soon)
+sfx_prompts:
+  - "heavy rain on glass, stereo, loopable"
+  - "distant city hum, low frequency, ambient"
+  - "electrical hum, neon sign buzzing, subtle"
