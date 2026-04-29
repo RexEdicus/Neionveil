@@ -29,12 +29,19 @@ render:
   volumetrics: true
   motion_blur: false             # Off for ambient — saves render time
 
-# ─── Paths ────────────────────────────────────────────────────────────────────
+# ─── Paths (Windows defaults — override per-machine via env or CLI) ───────────
 paths:
+  # Blender 5.0 — update if you have a different version or install location
   blender_exe: "C:\\Program Files\\Blender Foundation\\Blender 5.0\\blender.exe"
+  # FFmpeg — WinGet install location
+  # Update this path to match your FFmpeg installation, for example:
+  #   C:\Users\<YourName>\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_...\bin\ffmpeg.exe
+  # Or add ffmpeg/bin to your system PATH and set this to "ffmpeg"
+  ffmpeg_exe: "ffmpeg"
   themes_dir: "themes"
   temp_dir: "temp"
   output_dir: "output_vault"
+  runs_dir: "runs"
 
 # ─── Active theme ─────────────────────────────────────────────────────────────
 # Change this to switch themes — nothing else needs to be touched

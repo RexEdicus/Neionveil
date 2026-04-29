@@ -1,6 +1,6 @@
 """
-config_loader.py
-─────────────────
+config/config_loader.py
+────────────────────────
 Shared utility. Every module imports this to get the config dict.
 Never import config directly — always go through load_config().
 
@@ -12,6 +12,7 @@ Usage:
 
 import os
 import yaml
+import random
 from pathlib import Path
 
 
@@ -47,13 +48,18 @@ def load_config(path: str = None) -> dict:
         raise KeyError(f"[Config] Missing required keys in config.yaml: {missing}")
 
     # Resolve seed: if null, generate a random one and inject it
-    import random
     if config.get("seed") is None:
         config["seed"] = random.randint(0, 999999)
         print(f"[Config] No seed set — using random seed: {config['seed']}")
 
     _cached_config = config
     return config
+
+
+def reset_cache():
+    """Clear the cached config (useful for testing)."""
+    global _cached_config
+    _cached_config = None
 
 
 def get_theme_dir(config: dict) -> Path:
@@ -67,10 +73,15 @@ def get_temp_dir(config: dict) -> Path:
     base = Path(__file__).parent.parent
     theme = config["theme"]
     seed = config["seed"]
-    return base / config["paths"]["temp_dir"] / f"{theme}_{seed}"
+    return base / config["paths"].get("temp_dir", "temp") / f"{theme}_{seed}"
 
 
 def get_output_dir(config: dict) -> Path:
     """Return the output vault path."""
     base = Path(__file__).parent.parent
-    return base / config["paths"]["output_dir"]
+    return base / config["paths"].get("output_dir", "output_vault")
+
+
+def get_runs_dir() -> Path:
+    """Return the runs/ root directory."""
+    return Path(__file__).parent.parent / "runs"

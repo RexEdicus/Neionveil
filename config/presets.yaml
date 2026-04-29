@@ -1,0 +1,64 @@
+# config/presets.yaml
+# ────────────────────
+# Quality / resolution / FPS / encode presets for the Neonveil pipeline.
+#
+# Usage: --quality fast|balanced|final  --res 1920x1080|2560x1440|3840x2160  --fps 30|60
+#
+# Each preset maps to Blender render settings + ffmpeg encode settings.
+
+# ─── Quality presets ──────────────────────────────────────────────────────────
+quality:
+  fast:
+    description: "Quick preview — low samples, fast ffmpeg encode"
+    blender_samples: 16
+    ffmpeg_crf: 28
+    ffmpeg_preset: "ultrafast"
+    ffmpeg_audio_bitrate: "192k"
+    denoise: false
+
+  balanced:
+    description: "Default — good quality / reasonable speed"
+    blender_samples: 64
+    ffmpeg_crf: 18
+    ffmpeg_preset: "slow"
+    ffmpeg_audio_bitrate: "320k"
+    denoise: true
+
+  final:
+    description: "Maximum quality — slow render, near-lossless encode"
+    blender_samples: 256
+    ffmpeg_crf: 12
+    ffmpeg_preset: "veryslow"
+    ffmpeg_audio_bitrate: "320k"
+    denoise: true
+
+# ─── Resolution presets ───────────────────────────────────────────────────────
+resolution:
+  "1920x1080":
+    width: 1920
+    height: 1080
+    label: "1080p Full HD"
+
+  "2560x1440":
+    width: 2560
+    height: 1440
+    label: "1440p QHD (default)"
+
+  "3840x2160":
+    width: 3840
+    height: 2160
+    label: "4K UHD"
+
+# ─── FPS presets ──────────────────────────────────────────────────────────────
+fps:
+  30:
+    description: "Standard — recommended for ambient content"
+  60:
+    description: "Smooth — doubles render time and file size"
+
+# ─── Render-mode defaults by pipeline mode ────────────────────────────────────
+render_mode_defaults:
+  full: "loop"
+  assets: "off"
+  render: "loop"
+  assemble: "loop"
