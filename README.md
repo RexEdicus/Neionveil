@@ -166,10 +166,21 @@ python master_run.py --mode assemble --run-id <id> \
 ## Configuration
 
 Edit `config/config.yaml` to set:
-- Blender and FFmpeg executable paths
+- **`paths.blender_exe`** — full path to your `blender.exe` (Windows default provided)
+- **`paths.ffmpeg_exe`** — full path to `ffmpeg.exe`, or `"ffmpeg"` if it's on your PATH
 - Default theme, seed, resolution, FPS
 - Audio settings (sample rate, bitrate)
 - Render settings (engine, samples, bloom, volumetrics)
+
+### Windows FFmpeg path example:
+```yaml
+paths:
+  blender_exe: "C:\\Program Files\\Blender Foundation\\Blender 5.0\\blender.exe"
+  # WinGet install location (replace <YourName> with your Windows username):
+  ffmpeg_exe: "C:\\Users\\<YourName>\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1-full_build\\bin\\ffmpeg.exe"
+  # Or if ffmpeg is on PATH:
+  # ffmpeg_exe: "ffmpeg"
+```
 
 Edit `config/presets.yaml` to adjust quality presets (Blender samples, ffmpeg CRF/preset).
 

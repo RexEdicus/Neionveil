@@ -37,7 +37,6 @@ import os
 import sys
 import logging
 import argparse
-import random
 from pathlib import Path
 
 # ── Project root on sys.path ──────────────────────────────────────────────────
@@ -350,6 +349,7 @@ def main():
     if args.seed is not None:
         cfg["seed"] = args.seed
     elif cfg.get("seed") is None:
+        import random
         cfg["seed"] = random.randint(0, 999999)
         print(f"[System] Auto seed: {cfg['seed']}")
 

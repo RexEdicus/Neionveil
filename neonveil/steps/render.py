@@ -243,6 +243,7 @@ def list_cameras(theme_dir: Path, blend_file: Path, config: dict) -> list:
             data = yaml.safe_load(f)
         cameras = data.get("cameras", [])
         if cameras:
+            # cameras.yaml entries may be plain strings or dicts with a 'name' key
             return [c if isinstance(c, str) else c["name"] for c in cameras]
 
     # Fall back to Blender inspection
