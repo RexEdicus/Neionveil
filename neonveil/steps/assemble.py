@@ -92,6 +92,7 @@ def run_assemble_step(
                 output_path=final_mp4,
                 config=config,
                 dry_run=dry_run,
+                quality=quality,
             )
         else:
             print("[Assemble] render-mode=off but no existing render found. Skipping video.")
@@ -152,6 +153,7 @@ def run_assemble_step(
                 output_path=final_mp4,
                 config=config,
                 dry_run=dry_run,
+                quality=quality,
             )
         elif frames_dir and os.path.exists(frames_dir):
             from composer.compose import compose
@@ -244,6 +246,7 @@ def _assemble_with_cuts(
         output_path=final_mp4,
         config=config,
         dry_run=dry_run,
+        quality=quality,
     )
 
 
@@ -340,7 +343,7 @@ def _find_existing_render_video(run_dir: Path):
     return str(video) if video.exists() else None
 
 
-def _mux_audio_video(audio_path, video_path, output_path, config, dry_run=False):
+def _mux_audio_video(audio_path, video_path, output_path, config, dry_run=False, quality="balanced"):
     """Mux audio + video into the final MP4."""
     if dry_run:
         print(f"[DryRun] Would mux: {audio_path} + {video_path} → {output_path}")
@@ -349,8 +352,7 @@ def _mux_audio_video(audio_path, video_path, output_path, config, dry_run=False)
     from composer.compose import compose_from_video
     from neonveil.steps.render import _load_quality_preset
 
-    quality_name = "balanced"   # default; caller should pass quality if needed
-    preset = _load_quality_preset(quality_name)
+    preset = _load_quality_preset(quality)
 
     return compose_from_video(
         audio_path=audio_path,

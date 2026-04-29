@@ -352,11 +352,32 @@ class Orchestrator:
         )
 
     def _parse_camera_sequence(self) -> list:
-        """Parse --camera-sequence flag into a list."""
+        """
+        Parse --camera-sequence flag into a list.
+        If not specified and --camera-mode cuts is active, load default_sequence
+        from the active theme's cameras.yaml (if available).
+        """
         val = self.args.camera_sequence
-        if not val:
-            return []
-        return [c.strip() for c in val.split(",") if c.strip()]
+        if val:
+            return [c.strip() for c in val.split(",") if c.strip()]
+
+        # No explicit sequence — try cameras.yaml default_sequence for cuts mode
+        if getattr(self.args, "camera_mode", "continuous") == "cuts":
+            theme_dir = get_theme_dir(self.config)
+            cameras_yaml = theme_dir / "cameras.yaml"
+            if cameras_yaml.exists():
+                try:
+                    import yaml
+                    with open(cameras_yaml, "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                    seq = data.get("default_sequence", [])
+                    if seq:
+                        log.info(f"[Orchestrator] Using cameras.yaml default_sequence: {seq}")
+                        return list(seq)
+                except Exception as e:
+                    log.warning(f"[Orchestrator] Could not read cameras.yaml default_sequence: {e}")
+
+        return []
 
     def _print_summary(self, run_dir: Path, run_id: str, final_mp4: str):
         print(f"\n[System] ═══ DONE ═══")
