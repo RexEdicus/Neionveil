@@ -23,6 +23,8 @@ except ModuleNotFoundError:
 
 from run_spec import build_run_spec, expand_variation_manifests
 
+DEFAULT_VARIATION_ID = "var-001"
+
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Neonveil Pipeline")
@@ -112,7 +114,7 @@ def run_render(config: dict, frames_dir: str, blend_save_path: str, result_bag: 
         "--noise-offset", str(variation.get("noise_offset", 0.0)),
     ]
 
-    print(f"[Render] Launching Blender... {config.get('variation_id', 'var-001')}")
+    print(f"[Render] Launching Blender... {config.get('runtime_variation_id', DEFAULT_VARIATION_ID)}")
     result = subprocess.run(cmd, text=True)
 
     if result.returncode != 0:
@@ -163,7 +165,7 @@ def _apply_manifest_to_config(base_cfg: dict, manifest: dict) -> dict:
 
     cfg["runtime_music_prompt"] = manifest["music_prompt"]
     cfg["variation"] = manifest["variation"]
-    cfg["variation_id"] = manifest["variation_id"]
+    cfg["runtime_variation_id"] = manifest["variation_id"]
     return cfg
 
 

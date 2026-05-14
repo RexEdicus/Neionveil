@@ -187,7 +187,7 @@ def build_run_spec(config: dict, args) -> dict:
         )
         if llm_spec:
             # Merge only supported top-level keys from model output.
-            base.update({k: v for k, v in llm_spec.items() if k in base or k in {"render", "variation_strategy"}})
+            base.update({k: v for k, v in llm_spec.items() if k in base})
 
     # CLI overrides always win
     if getattr(args, "theme", None):
