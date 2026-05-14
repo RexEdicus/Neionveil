@@ -4,6 +4,8 @@ import urllib.request
 import urllib.error
 from copy import deepcopy
 
+MAX_VARIATIONS = 32
+
 
 def _fallback_music_prompt(config: dict) -> str:
     return config.get("audio", {}).get("fallback_prompt", "ambient cinematic background")
@@ -107,7 +109,7 @@ def validate_and_normalize_spec(spec: dict, config: dict, run_id: str | None = N
         v = int(v)
     except (TypeError, ValueError):
         v = 1
-    normalized["variations"] = max(1, min(v, 32))
+    normalized["variations"] = max(1, min(v, MAX_VARIATIONS))
 
     if run_id:
         normalized["run_id"] = run_id

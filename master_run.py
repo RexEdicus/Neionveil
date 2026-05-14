@@ -144,7 +144,8 @@ def review_gate(audio_path: str, frames_dir: str, config: dict, variation_id: st
             return "abort"
         elif choice == "r":
             return "reject"
-        print("  Please enter y, n, or r.")
+        else:
+            print("  Please enter y, n, or r.")
 
 
 def _apply_manifest_to_config(base_cfg: dict, manifest: dict) -> dict:

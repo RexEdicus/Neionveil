@@ -85,8 +85,9 @@ def apply_seed_variation(scene, seed: int, camera_jitter: float, light_jitter: f
 
         if obj.type == "LIGHT":
             base_energy = obj.data.energy
-            jitter = 1.0 + rng.uniform(-light_jitter, light_jitter)
-            obj.data.energy = max(0.0, base_energy * jitter)
+            if base_energy > 0.0:
+                jitter = 1.0 + rng.uniform(-light_jitter, light_jitter)
+                obj.data.energy = max(0.0, base_energy * jitter)
 
     cameras = [o for o in bpy.data.objects if o.type == "CAMERA"]
     for cam in cameras:
