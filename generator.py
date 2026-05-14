@@ -174,11 +174,18 @@ def _write_wav(path: str, audio: np.ndarray, sample_rate: int, channels: int):
 
 def _resolve_prompt(config: dict) -> str:
     """
-    Try to load the prompt from the active theme's prompts.yaml.
-    Falls back to config audio.fallback_prompt if not found.
+    Resolve active music prompt.
+    Priority:
+      1) runtime_music_prompt (CLI/LLM manifest override)
+      2) theme prompts.yaml music_prompt
+      3) config audio.fallback_prompt
     """
     import yaml
     from pathlib import Path
+
+    runtime_prompt = config.get("runtime_music_prompt")
+    if runtime_prompt:
+        return runtime_prompt
 
     theme_dir = (
         Path(__file__).parent.parent
