@@ -52,7 +52,18 @@ def _default_spec(config: dict, prompt: str, model: str | None, run_id: str | No
 
 def _call_ollama_for_spec(prompt: str, model: str, ollama_url: str, timeout_sec: int) -> dict | None:
     """
-    Attempts to produce JSON via local Ollama. Returns dict or None.
+    Request a structured run-spec proposal from Ollama.
+
+    Args:
+        prompt: User intent text describing desired generation.
+        model: Ollama model name to query.
+        ollama_url: HTTP endpoint for the Ollama generate API.
+        timeout_sec: Request timeout in seconds.
+
+    Returns:
+        A dict parsed from model JSON output when successful, otherwise None.
+        None is returned for network failures, HTTP errors, timeouts, or
+        invalid/non-dict JSON responses.
     """
     system_instruction = (
         "Return ONLY valid JSON with keys: theme,mood,music_prompt,render,variation_strategy. "
@@ -91,6 +102,12 @@ def _call_ollama_for_spec(prompt: str, model: str, ollama_url: str, timeout_sec:
 
 
 def validate_and_normalize_spec(spec: dict, config: dict, run_id: str | None = None, variations: int | None = None) -> dict:
+    """
+    Validate and normalize a run spec against safe defaults and constraints.
+
+    Ensures required keys exist, coerces types, clamps unsafe values, and
+    applies CLI overrides (run_id, variations) when provided.
+    """
     normalized = deepcopy(spec or {})
 
     normalized["theme"] = normalized.get("theme") or config.get("theme")
@@ -184,6 +201,12 @@ def build_run_spec(config: dict, args) -> dict:
 
 
 def expand_variation_manifests(spec: dict) -> list[dict]:
+    """
+    Expand a normalized run spec into deterministic per-variation manifests.
+
+    Each manifest contains a unique seed, stable variation_id, inherited render
+    settings, and derived camera/light/noise variation controls.
+    """
     manifests = []
     base_seed = int(spec["seed"])
     strategy = spec["variation_strategy"]

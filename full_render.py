@@ -76,6 +76,13 @@ def apply_render_settings(scene, args):
 
 
 def apply_seed_variation(scene, seed: int, camera_jitter: float, light_jitter: float, noise_offset: float):
+    """
+    Apply deterministic scene variation controls.
+
+    camera_jitter: max positional delta (Blender units) applied per camera axis.
+    light_jitter: max multiplicative light-energy deviation fraction (0.0-1.0+).
+    noise_offset: max additive shift for world noise-node W inputs.
+    """
     rng = random.Random(seed)
 
     for obj in bpy.data.objects:

@@ -54,6 +54,7 @@ def parse_args(argv=None):
 
 
 def run_music(config: dict, audio_path: str, result_bag: dict):
+    """Thread target for audio generation; stores 'ok' or exception in result_bag."""
     try:
         try:
             from music_engine.generator import generate_audio
@@ -66,6 +67,7 @@ def run_music(config: dict, audio_path: str, result_bag: dict):
 
 
 def run_render(config: dict, frames_dir: str, blend_save_path: str, result_bag: dict):
+    """Thread target for Blender subprocess render; stores 'ok' or exception in result_bag."""
     import subprocess
 
     blender_exe = config["paths"]["blender_exe"]
