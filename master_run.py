@@ -140,9 +140,9 @@ def review_gate(audio_path: str, frames_dir: str, config: dict, variation_id: st
         choice = input("  Your choice (y/n/r): ").strip().lower()
         if choice == "y":
             return "approve"
-        if choice == "n":
+        elif choice == "n":
             return "abort"
-        if choice == "r":
+        elif choice == "r":
             return "reject"
         print("  Please enter y, n, or r.")
 
