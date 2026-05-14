@@ -67,6 +67,7 @@ def _call_ollama_for_spec(prompt: str, model: str, ollama_url: str, timeout_sec:
     """
     system_instruction = (
         "Return ONLY valid JSON with keys: theme,mood,music_prompt,render,variation_strategy. "
+        "Do not include run_id, seed, or variations (those are CLI-controlled). "
         "render keys: engine,samples,bloom,volumetrics,fps,duration_minutes,resolution_x,resolution_y. "
         "variation_strategy keys: camera_jitter_max,light_jitter_max,noise_offset_max."
     )
@@ -88,7 +89,8 @@ def _call_ollama_for_spec(prompt: str, model: str, ollama_url: str, timeout_sec:
     try:
         with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError):
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as exc:
+        print(f"[Spec] Ollama unavailable or invalid response ({exc}); using safe defaults.")
         return None
 
     response_text = data.get("response")
@@ -184,6 +186,7 @@ def build_run_spec(config: dict, args) -> dict:
             timeout_sec=args.ollama_timeout,
         )
         if llm_spec:
+            # Merge only supported top-level keys from model output.
             base.update({k: v for k, v in llm_spec.items() if k in base or k in {"render", "variation_strategy"}})
 
     # CLI overrides always win

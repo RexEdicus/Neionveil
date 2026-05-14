@@ -80,7 +80,7 @@ def apply_seed_variation(scene, seed: int, camera_jitter: float, light_jitter: f
     Apply deterministic scene variation controls.
 
     camera_jitter: max positional delta (Blender units) applied per camera axis.
-    light_jitter: max multiplicative light-energy deviation fraction (0.0-1.0+).
+    light_jitter: max multiplicative light-energy deviation fraction (clamped to 0.0-1.0).
     noise_offset: max additive shift for world noise-node W inputs.
     """
     rng = random.Random(seed)
@@ -93,7 +93,8 @@ def apply_seed_variation(scene, seed: int, camera_jitter: float, light_jitter: f
         if obj.type == "LIGHT":
             base_energy = obj.data.energy
             if base_energy > 0.0:
-                jitter = 1.0 + rng.uniform(-light_jitter, light_jitter)
+                bounded_jitter = min(max(light_jitter, 0.0), 1.0)
+                jitter = 1.0 + rng.uniform(-bounded_jitter, bounded_jitter)
                 obj.data.energy = max(0.0, base_energy * jitter)
 
     cameras = [o for o in bpy.data.objects if o.type == "CAMERA"]

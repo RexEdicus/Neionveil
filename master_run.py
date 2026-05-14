@@ -43,10 +43,8 @@ def parse_args(argv=None):
 
     args = parser.parse_args(argv)
 
-    if args.llm_prompt and not args.llm_model:
-        parser.error("--llm-model is required when --llm-prompt is provided")
-    if args.llm_model and not args.llm_prompt:
-        parser.error("--llm-prompt is required when --llm-model is provided")
+    if bool(args.llm_prompt) != bool(args.llm_model):
+        parser.error("--llm-prompt and --llm-model must be provided together")
     if args.variations < 1:
         parser.error("--variations must be >= 1")
 
@@ -190,6 +188,7 @@ def main(argv=None):
     run_output_root.mkdir(parents=True, exist_ok=True)
 
     rendered_videos = []
+    rejected_variations = []
 
     for manifest in manifests:
         cfg_run = _apply_manifest_to_config(cfg, manifest)
@@ -246,6 +245,7 @@ def main(argv=None):
 
         if decision == "reject":
             print(f"[System] Rejected {var_id}. Skipping compose for this variation.")
+            rejected_variations.append(var_id)
             continue
 
         try:
@@ -265,6 +265,8 @@ def main(argv=None):
     print(f"\n[System] ═══ DONE ═══")
     print(f"[System] Run ID     : {spec['run_id']}")
     print(f"[System] Variations : {len(rendered_videos)}/{len(manifests)} composed")
+    if rejected_variations:
+        print(f"[System] Rejected   : {', '.join(rejected_variations)}")
     print(f"[System] Total time : {total_elapsed:.1f} min")
     for video in rendered_videos:
         print(f"[System] Video      : {video}")
